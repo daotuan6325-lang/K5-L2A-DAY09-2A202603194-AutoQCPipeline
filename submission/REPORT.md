@@ -99,4 +99,27 @@ Dataset `clean_v1` hiện chỉ dùng cho thí nghiệm, chưa phát hành.
 Nguyên nhân: script so đường dẫn kiểu Windows (`\`) với danh sách file đề trong `_protected.json` dùng `/`. Trên Linux không có lỗi này.
 4 module của tôi không bị báo.
 
+## Thưởng: check mới `aspect_ratio` (tỉ lệ khung hình bất thường)
+**File:** `pipeline/checks/aspect_ratio.py`, test ở `tests/test_aspect_ratio.py` (9 test xanh; tổng `pytest` 88/88).
+
+**Ý tưởng.** Với mỗi lớp, tính median và MAD của log(rộng/cao theo pixel) trên chính dataset. Box có |z| > 3,5 thì cảnh báo `BOX_ASPECT_OUTLIER`; box lệch hơn 8 lần (bất kể lớp) thì cảnh báo `BOX_EXTREME_ASPECT`.
+Đây chỉ là cảnh báo (WARN) và **không dùng model**.
+Box chạm mép ảnh được bỏ qua. Lý do có bằng chứng: bản đầu tiên gắn 6 cờ trên raw, trong đó 5 cờ là người bị khung ảnh cắt (cách mép ≤ 0,003).
+
+**Giới hạn khi gắn vào pipeline.** `checks/__init__.py` và `configs/pipeline.yaml` là file đề bị ghim, nên check này **chưa cắm vào pipeline**: không thêm được vào `QC_CHECKS`, không thêm được khoá config.
+Ngưỡng đọc từ `cfg["aspect_ratio"]` nếu có, nếu không thì dùng `DEFAULTS` trong module.
+Chạy riêng bằng: `python -m pipeline.checks.aspect_ratio data/raw`.
+
+**Kết quả.**
+
+| Tập | Box xét (không chạm mép) | Cờ | Đúng khi mở xem (`viz_labels.py`) |
+|---|---:|---:|---|
+| raw | 512 | 6 | **6/6 lỗi thật**: 5 box *car* nằm trên người (`img_0021`, `0071`, `0183`, `0185`, `0212`), 1 box *bus* trên vỉa hè trống (`img_0180`) |
+| calib | 95 | 0 | recall WRONG_CLASS **0/6**: người bị đổi thành car trong calib có r = 0,43–0,78, z chỉ từ −1,3 đến −2,5; 2 ca chạm mép |
+
+**Nhận xét trung thực.**
+- Cả 6 cờ trên raw **đều đã được `second_opinion` cờ** (5 WRONG_CLASS, 1 FALSE_POS), và `img_0021` đã bị loại vì LEAK_TEST. Như vậy trên lô này, check mới **không phát hiện thêm lỗi nào**.
+- Giá trị của nó là một **tín hiệu độc lập với model**: precision cao, vẫn chạy khi không có checker, và có thể dùng để đẩy ảnh lên đầu hàng đợi khi cả hai check cùng cờ.
+- Recall thấp: chỉ bắt được box có hình dạng **rất** khác lớp của nó. Tôi không hạ ngưỡng z để khớp calib, vì đó chính là kiểu tối ưu cho calib mà §3 đã cảnh báo.
+
 *(Thưởng CVAT: không làm.)*
